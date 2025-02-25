@@ -1,0 +1,53 @@
+---
+name: 'Action: Go Unit Test'
+description: 'Run go unit tests and generate JUnit reports'
+author: juliankoehn
+inputs:
+  command:
+    description: 'The command to run the tests'
+    required: true
+    default: 'make test'
+  go-version:
+    description: 'The Go version to use'
+    required: false
+  go-version-file:
+    description: 'The path to the file containing the Go version to use'
+    required: false
+    default: 'go.mod'
+  working-directory:
+    description: 'The directory to download dependencies in, default is project root'
+    required: false
+    default: ''
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Go in working directory
+      if: ${{ inputs.working-directory != '' }}
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ inputs.go-version }}
+        go-version-file: ${{ inputs.working-directory }}/${{ inputs.go-version-file }}
+        cache: true
+        cache-dependency-path: ${{ inputs.working-directory }}/go.sum
+
+    - name: Set up Go
+      if: ${{ inputs.working-directory == '' }}
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ inputs.go-version }}
+        go-version-file: ${{ inputs.go-version-file }}
+        cache: true
+
+    - run: go install github.com/jstemmer/go-junit-report/v2@latest
+      shell: bash
+
+    - run: '${{ github.action_path }}/main.sh'
+      shell: bash
+      env:
+        INPUT_command: ${{ inputs.command }}
+        WORKING_DIRECTORY: ${{ inputs.working-directory }}
+
+    - uses: mikepenz/action-junit-report@v4
+      with:
+        report_paths: '**/junit.xml'
+        fail_on_failure: true
