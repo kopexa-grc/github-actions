@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Renovate
-        uses: kopexa-grc/github-actions/github/auto-approve
+        uses: kopexa-grc/github-actions/github/auto-approve@v0.0.1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           users: |
