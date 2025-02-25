@@ -6,8 +6,7 @@ author: juliankoehn
 inputs:
   github-token:
     description: |
-      GitHub token used to fetch ionos-cloud internal repos.
-      This is only used if fetch-from-vault is set to false.
+      GitHub token used to fetch kopexa-grc internal repos.
     required: false
   go-mod-file:
     description: |
