@@ -1,0 +1,57 @@
+---
+name: Go Setup
+description: |
+   Go setup that allows for builds against dependencies within the kopexa-grc GitHub organisation.
+author: juliankoehn
+inputs:
+  github-token:
+    description: |
+      GitHub token used to fetch ionos-cloud internal repos.
+      This is only used if fetch-from-vault is set to false.
+    required: false
+  go-mod-file:
+    description: |
+      Path to the go.mod file.
+    required: false
+    default: ./go.mod
+  display-install-info:
+    description: |
+      If true, the install information is displayed.
+    required: false
+    default: "false"
+runs:
+  using: 'composite'
+  steps:
+    - name: Set Token from Input
+      shell: bash
+      run: |
+        echo "KOPEXA_CLOUD_REPO_ACCESS_TOKEN=${{ inputs.github-token }}" >> "${GITHUB_ENV}"
+    - name: Check out code
+      uses: actions/checkout@v4
+      with:
+        fetch-tags: true
+        fetch-depth: 0
+    - name: Install Go
+      id: install-go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: ${{ inputs.go-mod-file }}
+        cache-dependency-path: "**/go.sum"
+    - name: Configure Git for private modules
+      shell: bash
+      run: |
+        git config --global url."https://${{ env.IONOS_CLOUD_REPO_ACCESS_TOKEN }}@github.com/kopexa-grc".insteadOf \
+        "https://github.com/kopexa-grc"
+
+        echo "GOPRIVATE=github.com/kopexa-grc" >> "${GITHUB_ENV}"
+    - name: Display install Information
+      if: ${{ inputs.display-install-info == 'true' }}
+      shell: bash
+      run: |
+        echo "
+        # ✅ Go Setup completed successfully
+
+        Go Version: ${{ steps.install-go.outputs.go-version }}
+        Cache Hit: ${{ steps.install-go.outputs.cache-hit }}
+
+        " >> "${GITHUB_STEP_SUMMARY}"

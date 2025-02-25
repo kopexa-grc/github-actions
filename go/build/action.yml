@@ -1,0 +1,43 @@
+---
+name: 'Action: Go Build'
+description: 'Attempt to automatically build go code'
+author: 'Kopexa'
+inputs:
+  go-version:
+    description: 'The Go version to use'
+    required: false
+  go-version-file:
+    description: 'The path to the file containing the Go version to use'
+    required: false
+    default: 'go.mod'
+  working-directory:
+    description: 'The directory to build go code in, default is project root'
+    required: false
+    default: ''
+  force-semver:
+    description: 'If set to true, generate a semver version instead of using the PR branch name.'
+    required: false
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Go in working directory
+      if: ${{ inputs.working-directory != '' }}
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ inputs.go-version }}
+        go-version-file: ${{ inputs.working-directory }}/${{ inputs.go-version-file }}
+        cache: true
+        cache-dependency-path: ${{ inputs.working-directory }}/go.sum
+
+    - name: Set up Go
+      if: ${{ inputs.working-directory == '' }}
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ inputs.go-version }}
+        go-version-file: ${{ inputs.go-version-file }}
+        cache: true
+    - run: '${{ github.action_path }}/main.sh'
+      shell: bash
+      env:
+        WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        FORCE_SEMVER: ${{ inputs.force-semver }}
