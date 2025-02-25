@@ -1,0 +1,20 @@
+---
+name: PR
+# This workflow wraps all workflows and actions that should be executed on a pull request.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
+
+jobs:
+  auto-approval:
+    name: Auto Approval
+    runs-on: ubuntu-latest
+    steps:
+      - name: Renovate
+        uses: kopexa-grc/github-actions/github/auto-approve
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          users: |
+            juliankoehn
+          labels: |
+            renovate
