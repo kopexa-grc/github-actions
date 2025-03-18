@@ -1,3 +1,6 @@
+# Copyright (c) Kopexa GmbH
+# SPDX-License-Identifier: BUSL-1.1
+
 ---
 name: 'Action: Go Unit Test'
 description: 'Run go unit tests and generate JUnit reports'

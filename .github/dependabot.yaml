@@ -1,0 +1,12 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directories: 
+      - "/"
+      - "/github/auto-approve"
+      - "/go/build"
+      - "/go/setup"
+      - "/go/unit-test"
+    schedule:
+      # Check for updates to GitHub Actions every week
+      interval: "weekly"
