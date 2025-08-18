@@ -34,7 +34,7 @@ runs:
         echo "KOPEXA_CLOUD_REPO_ACCESS_TOKEN=${{ inputs.github-token }}" >> "${GITHUB_ENV}"
 
     - name: Check out code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         fetch-tags: true
         fetch-depth: ${{ inputs.fetch-depth }}
