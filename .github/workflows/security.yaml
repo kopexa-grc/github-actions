@@ -62,13 +62,13 @@ jobs:
             GOPATH: ${{ github.workspace }}
         steps:
             - name: Checkout
-              uses: actions/checkout@v4
+              uses: actions/checkout@v5
 
             - name: Setup Go
               uses: kopexa-grc/github-actions/go/setup@main
 
             - name: Checkout
-              uses: actions/checkout@v4
+              uses: actions/checkout@v5
               with:
                 path: ./src/github.com/${{ github.repository }}
 
