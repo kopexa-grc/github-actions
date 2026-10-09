@@ -27,4 +27,4 @@ They complement the composite actions above.
 
 [Release process](docs/releases.md) describes this repository's Release Please
 workflow and version tags. Consumer applications keep their own release versions.
-External actions are pinned to verified release SHAs; Dependabot checks them weekly.
+External actions are pinned to verified release SHAs; Dependabot checks them quarterly.
