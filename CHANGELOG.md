@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.4](https://github.com/kopexa-grc/github-actions/compare/v0.0.3...v0.0.4) (2026-10-09)
+
+
+### Features
+
+* **websites:** dispatch deployments to the ops repository ([#8](https://github.com/kopexa-grc/github-actions/issues/8)) ([a4baa49](https://github.com/kopexa-grc/github-actions/commit/a4baa49ad76437aaaeb1dcc21a889b91d82b27fd))
+
 ## [0.0.3](https://github.com/kopexa-grc/github-actions/compare/v0.0.2...v0.0.3) (2026-10-09)
 
 
