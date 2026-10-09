@@ -1,0 +1,33 @@
+# Copyright (c) Kopexa GmbH
+# SPDX-License-Identifier: BUSL-1.1
+name: Next.js PR checks
+on:
+  workflow_call:
+    inputs:
+      test-command:
+        default: pnpm test
+        type: string
+      working-directory:
+        default: .
+        type: string
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: App checks
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          CHECK_COMMAND: ${{ inputs.test-command }}
+        run: bash -euo pipefail -c "$CHECK_COMMAND"

@@ -1,0 +1,210 @@
+# Copyright (c) Kopexa GmbH
+# SPDX-License-Identifier: BUSL-1.1
+name: Next.js image and GitOps handoff
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      source-ref:
+        required: true
+        type: string
+      dockerfile:
+        required: true
+        type: string
+      image:
+        required: true
+        type: string
+      image-tag:
+        required: true
+        type: string
+      gitops-path:
+        required: true
+        type: string
+      image-alias:
+        default: website
+        type: string
+      next-cache-target:
+        default: /app/.next/cache
+        type: string
+      health-path:
+        default: /api/health
+        type: string
+      platforms:
+        default: linux/amd64
+        type: string
+    secrets:
+      GITOPS_TOKEN:
+        required: false
+    outputs:
+      digest:
+        value: ${{ jobs.image.outputs.digest }}
+        description: Published image digest
+permissions:
+  contents: read
+  packages: write
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment:
+      name: ${{ inputs.environment }}
+      url: ${{ vars.DEPLOYMENT_URL }}
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source-ref }}
+          persist-credentials: false
+      - name: Validate environment
+        id: config
+        env:
+          DEPLOY_ENV: ${{ inputs.environment }}
+          PUBLIC_CONFIG: ${{ vars.NEXT_PUBLIC_CONFIG_JSON }}
+        run: |
+          python3 - <<'CHECK'
+          import hashlib, json, os
+          assert os.environ['DEPLOY_ENV'] in ('staging', 'production')
+          config = json.loads(os.environ['PUBLIC_CONFIG'] or '{}')
+          assert isinstance(config, dict)
+          assert config.get('NEXT_PUBLIC_BASE_URL', '').startswith('https://'), 'Set NEXT_PUBLIC_BASE_URL in NEXT_PUBLIC_CONFIG_JSON'
+          assert 'NEXT_PUBLIC_DEPLOYMENT_ENV' not in config, 'Environment is controlled by the workflow'
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('hash=' + hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest() + '\n')
+          CHECK
+      - uses: docker/setup-buildx-action@v3
+        id: buildx
+      - name: Restore Next.js and TypeScript cache
+        id: mounts
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/website-build-cache
+          key: nextjs-mounts-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.environment }}-${{ vars.TURBOPACK_BUILD_CACHE || 'false' }}-${{ hashFiles('pnpm-lock.yaml', inputs.dockerfile) }}-${{ steps.config.outputs.hash }}-${{ github.sha }}
+          restore-keys: |
+            nextjs-mounts-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.environment }}-${{ vars.TURBOPACK_BUILD_CACHE || 'false' }}-${{ hashFiles('pnpm-lock.yaml', inputs.dockerfile) }}-${{ steps.config.outputs.hash }}-
+      - name: Inject and extract BuildKit cache mounts
+        uses: reproducible-containers/buildkit-cache-dance@v3.3.0
+        with:
+          builder: ${{ steps.buildx.outputs.name }}
+          scratch-dir: ${{ runner.temp }}/website-build-scratch
+          cache-map: |
+            {"${{ runner.temp }}/website-build-cache": {"target": "${{ inputs.next-cache-target }}", "sharing": "locked"}}
+          skip-extraction: ${{ steps.mounts.outputs.cache-hit }}
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ inputs.dockerfile }}
+          platforms: ${{ inputs.platforms }}
+          push: true
+          tags: ${{ inputs.image }}:${{ inputs.image-tag }}
+          build-args: |
+            NODE_OPTIONS=${{ vars.BUILD_NODE_OPTIONS || '--max-old-space-size=1536' }}
+            TURBOPACK_BUILD_CACHE=${{ vars.TURBOPACK_BUILD_CACHE || 'false' }}
+            TURBOPACK_MEMORY_LIMIT=${{ vars.TURBOPACK_MEMORY_LIMIT || '1073741824' }}
+            DEPLOYMENT_ENV=${{ inputs.environment }}
+            NEXT_PUBLIC_DEPLOYMENT_ENV=${{ inputs.environment }}
+            NEXT_PUBLIC_CONFIG_JSON=${{ vars.NEXT_PUBLIC_CONFIG_JSON || '{}' }}
+          cache-from: type=gha,scope=${{ github.event.repository.name }}-${{ inputs.environment }}
+          cache-to: type=gha,mode=max,ignore-error=true,scope=${{ github.event.repository.name }}-${{ inputs.environment }}
+      - name: Smoke test published image
+        env:
+          IMAGE: ${{ inputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          DEPLOY_ENV: ${{ inputs.environment }}
+          HEALTH_PATH: ${{ inputs.health-path }}
+        run: |
+          set -euo pipefail
+          trap 'docker logs website-smoke; docker rm -f website-smoke' EXIT
+          docker run -d --name website-smoke -p 127.0.0.1:3000:3000 \
+            -e DEPLOYMENT_ENV="$DEPLOY_ENV" -e NEXT_PUBLIC_DEPLOYMENT_ENV="$DEPLOY_ENV" \
+            -e RESEND_API_KEY=re_smoke_placeholder "$IMAGE@$DIGEST"
+          ready=false
+          for attempt in $(seq 1 30); do
+            if curl -fsS --max-time 2 "http://127.0.0.1:3000$HEALTH_PATH" >/dev/null; then ready=true; break; fi
+            echo "Waiting for container ($attempt)"
+            sleep 2
+          done
+          test "$ready" = true
+          if [ "$DEPLOY_ENV" = staging ]; then
+            curl -sS --max-time 10 -D "$RUNNER_TEMP/website-headers" -o /dev/null http://127.0.0.1:3000/
+            grep -qi '^x-robots-tag:.*noindex' "$RUNNER_TEMP/website-headers"
+          fi
+      - name: Reject outdated staging handoff
+        id: current
+        if: vars.GITOPS_ENABLED == 'true'
+        uses: actions/github-script@v7
+        env:
+          DEPLOY_ENV: ${{ inputs.environment }}
+        with:
+          script: |
+            if (context.payload.ref === 'refs/heads/main' && process.env.DEPLOY_ENV === 'staging') {
+              const { data } = await github.rest.git.getRef({ ...context.repo, ref: 'heads/main' });
+              if (data.object.sha !== context.sha) {
+                core.setFailed('A newer main commit exists; this staging image will not be deployed.');
+              }
+            }
+      - name: GitOps checkout
+        if: vars.GITOPS_ENABLED == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: kopexa-grc/envs
+          ref: main
+          token: ${{ secrets.GITOPS_TOKEN }}
+          path: gitops
+      - name: Install Kustomize
+        if: vars.GITOPS_ENABLED == 'true'
+        uses: imranismail/setup-kustomize@v2
+        with:
+          kustomize-version: '5.6.0'
+      - name: Update image digest
+        if: vars.GITOPS_ENABLED == 'true'
+        working-directory: gitops
+        env:
+          OVERLAY: ${{ inputs.gitops-path }}
+          IMAGE_ALIAS: ${{ inputs.image-alias }}
+          IMAGE: ${{ inputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          DEPLOY_ENV: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          test -n "$OVERLAY"
+          test -d "$OVERLAY"
+          case "$OVERLAY" in websites/*) ;; *) echo 'Only websites overlays are supported'; exit 1 ;; esac
+          cd "$OVERLAY"
+          kustomize edit set image "$IMAGE_ALIAS=$IMAGE@$DIGEST"
+          kustomize build . >/dev/null
+          cd "$GITHUB_WORKSPACE/gitops"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "$OVERLAY/kustomization.yaml"
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "chore(websites): deploy $DEPLOY_ENV image $DIGEST"
+          # Another app may have updated envs while this image was building.
+          for attempt in 1 2 3; do
+            echo "GitOps push attempt $attempt"
+            git fetch origin main
+            git rebase origin/main
+            if git push origin HEAD:main; then exit 0; fi
+          done
+          exit 1
+      - name: Record handoff
+        env:
+          IMAGE: ${{ inputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          ENABLED: ${{ vars.GITOPS_ENABLED }}
+        run: |
+          # shellcheck disable=SC2016
+          printf 'Published `%s@%s`\n\n' "$IMAGE" "$DIGEST" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$ENABLED" = true ]; then
+            echo 'Digest committed to envs. ArgoCD sync and health must be checked separately.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'GitOps handoff disabled. No cluster deployment requested.' >> "$GITHUB_STEP_SUMMARY"
+          fi

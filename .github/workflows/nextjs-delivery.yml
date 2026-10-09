@@ -1,0 +1,93 @@
+# Copyright (c) Kopexa GmbH
+# SPDX-License-Identifier: BUSL-1.1
+name: Release Please and Next.js delivery
+on:
+  workflow_call:
+    inputs:
+      dockerfile:
+        required: true
+        type: string
+      image:
+        required: true
+        type: string
+      staging-path:
+        required: true
+        type: string
+      production-path:
+        required: true
+        type: string
+      next-cache-target:
+        default: /app/.next/cache
+        type: string
+      release-config:
+        default: .release-please-config.json
+        type: string
+      release-manifest:
+        default: .release-please-manifest.json
+        type: string
+    secrets:
+      RELEASE_PLEASE_TOKEN:
+        required: false
+      GITOPS_TOKEN:
+        required: false
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  packages: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      created: ${{ steps.release.outputs.release_created }}
+      tag: ${{ steps.release.outputs.tag_name }}
+      staging: ${{ steps.gate.outputs.staging }}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          config-file: ${{ inputs.release-config }}
+          manifest-file: ${{ inputs.release-manifest }}
+      - name: Exclude merged release PRs from staging (including reruns)
+        id: gate
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              ...context.repo, commit_sha: context.sha, per_page: 100
+            });
+            const releaseMerge = prs.some(pr => pr.merged_at &&
+              pr.base.ref === 'main' &&
+              pr.head.ref.startsWith('release-please--') &&
+              pr.labels.some(label => ['autorelease: pending', 'autorelease: tagged'].includes(label.name)));
+            core.setOutput('staging', String(!releaseMerge));
+  staging:
+    needs: release
+    if: needs.release.outputs.created != 'true' && needs.release.outputs.staging == 'true'
+    uses: ./.github/workflows/nextjs-image.yml
+    with:
+      environment: staging
+      source-ref: ${{ github.sha }}
+      dockerfile: ${{ inputs.dockerfile }}
+      next-cache-target: ${{ inputs.next-cache-target }}
+      image: ${{ inputs.image }}
+      image-tag: staging-${{ github.sha }}
+      gitops-path: ${{ inputs.staging-path }}
+    secrets:
+      GITOPS_TOKEN: ${{ secrets.GITOPS_TOKEN }}
+  production:
+    needs: release
+    if: needs.release.outputs.created == 'true'
+    uses: ./.github/workflows/nextjs-image.yml
+    with:
+      environment: production
+      source-ref: ${{ needs.release.outputs.tag }}
+      dockerfile: ${{ inputs.dockerfile }}
+      next-cache-target: ${{ inputs.next-cache-target }}
+      image: ${{ inputs.image }}
+      image-tag: ${{ needs.release.outputs.tag }}
+      gitops-path: ${{ inputs.production-path }}
+    secrets:
+      GITOPS_TOKEN: ${{ secrets.GITOPS_TOKEN }}
