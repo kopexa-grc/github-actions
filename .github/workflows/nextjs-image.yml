@@ -1,6 +1,6 @@
 # Copyright (c) Kopexa GmbH
 # SPDX-License-Identifier: BUSL-1.1
-name: Next.js image and GitOps handoff
+name: Next.js image and deployment dispatch
 on:
   workflow_call:
     inputs:
@@ -19,8 +19,13 @@ on:
       image-tag:
         required: true
         type: string
+      application:
+        description: Application registered in envs; defaults to caller repository name
+        default: ""
+        type: string
       gitops-path:
-        required: true
+        description: Deprecated; envs now owns target paths
+        default: ""
         type: string
       image-alias:
         default: website
@@ -137,65 +142,60 @@ jobs:
             curl -sS --max-time 10 -D "$RUNNER_TEMP/website-headers" -o /dev/null http://127.0.0.1:3000/
             grep -qi '^x-robots-tag:.*noindex' "$RUNNER_TEMP/website-headers"
           fi
-      - name: Reject outdated staging handoff
-        id: current
+      - name: Dispatch website deployment and await result
         if: vars.GITOPS_ENABLED == 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
+          APPLICATION: ${{ inputs.application || github.event.repository.name }}
           DEPLOY_ENV: ${{ inputs.environment }}
-        with:
-          script: |
-            if (context.payload.ref === 'refs/heads/main' && process.env.DEPLOY_ENV === 'staging') {
-              const { data } = await github.rest.git.getRef({ ...context.repo, ref: 'heads/main' });
-              if (data.object.sha !== context.sha) {
-                core.setFailed('A newer main commit exists; this staging image will not be deployed.');
-              }
-            }
-      - name: GitOps checkout
-        if: vars.GITOPS_ENABLED == 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: kopexa-grc/envs
-          ref: main
-          token: ${{ secrets.GITOPS_TOKEN }}
-          path: gitops
-      - name: Install Kustomize
-        if: vars.GITOPS_ENABLED == 'true'
-        uses: imranismail/setup-kustomize@53f941b41dca13ed61874bbc6b4b6e1562877530 # v3.0.0
-        with:
-          kustomize-version: '5.8.3'
-      - name: Update image digest
-        if: vars.GITOPS_ENABLED == 'true'
-        working-directory: gitops
-        env:
-          OVERLAY: ${{ inputs.gitops-path }}
-          IMAGE_ALIAS: ${{ inputs.image-alias }}
-          IMAGE: ${{ inputs.image }}
           DIGEST: ${{ steps.build.outputs.digest }}
-          DEPLOY_ENV: ${{ inputs.environment }}
-        run: |
-          set -euo pipefail
-          test -n "$OVERLAY"
-          test -d "$OVERLAY"
-          case "$OVERLAY" in websites/*) ;; *) echo 'Only websites overlays are supported'; exit 1 ;; esac
-          cd "$OVERLAY"
-          kustomize edit set image "$IMAGE_ALIAS=$IMAGE@$DIGEST"
-          kustomize build . >/dev/null
-          cd "$GITHUB_WORKSPACE/gitops"
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- "$OVERLAY/kustomization.yaml"
-          if git diff --cached --quiet; then exit 0; fi
-          git commit -m "chore(websites): deploy $DEPLOY_ENV image $DIGEST"
-          # Another app may have updated envs while this image was building.
-          for attempt in 1 2 3; do
-            echo "GitOps push attempt $attempt"
-            git fetch origin main
-            git rebase origin/main
-            if git push origin HEAD:main; then exit 0; fi
-          done
-          exit 1
-      - name: Record handoff
+          SOURCE_REF: ${{ inputs.source-ref }}
+        with:
+          github-token: ${{ secrets.GITOPS_TOKEN }}
+          script: |
+            const { execFileSync } = require('node:child_process');
+            const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], {encoding: 'utf8'}).trim();
+            const target = {owner: 'kopexa-grc', repo: 'envs'};
+            const attempt = process.env.GITHUB_RUN_ATTEMPT;
+            const runId = String(context.runId);
+            const application = process.env.APPLICATION;
+            const environment = process.env.DEPLOY_ENV;
+            const title = `websites-${application}-${environment}-${runId}-${attempt}`;
+            const started = new Date(Date.now() - 60000).toISOString();
+            await github.rest.actions.createWorkflowDispatch({
+              ...target, workflow_id: 'websites.yml', ref: 'main',
+              inputs: {
+                application, environment, digest: process.env.DIGEST,
+                source_sha: sourceSha, source_ref: process.env.SOURCE_REF,
+                source_run_id: runId, source_run_attempt: attempt
+              }
+            });
+            let deployment;
+            for (let poll = 0; poll < 90; poll++) {
+              if (!deployment) {
+                const {data} = await github.rest.actions.listWorkflowRuns({
+                  ...target, workflow_id: 'websites.yml', event: 'workflow_dispatch',
+                  branch: 'main', created: `>=${started}`, per_page: 100
+                });
+                deployment = data.workflow_runs.find(run => run.display_title === title);
+                if (deployment) {
+                  await core.summary.addLink('Website deployment in envs', deployment.html_url).write();
+                }
+              }
+              if (deployment) {
+                const {data} = await github.rest.actions.getWorkflowRun({...target, run_id: deployment.id});
+                if (data.status === 'completed') {
+                  if (data.conclusion !== 'success') {
+                    throw new Error(`envs deployment ${data.conclusion}: ${data.html_url}`);
+                  }
+                  await core.summary.addRaw('\nDesired image recorded in envs. ArgoCD sync and health are separate.\n').write();
+                  return;
+                }
+              }
+              await new Promise(resolve => setTimeout(resolve, 10000));
+            }
+            throw new Error('Timed out waiting for envs; inspect the deployment run before retrying.');
+      - name: Record published image
         env:
           IMAGE: ${{ inputs.image }}
           DIGEST: ${{ steps.build.outputs.digest }}
@@ -203,8 +203,6 @@ jobs:
         run: |
           # shellcheck disable=SC2016
           printf 'Published `%s@%s`\n\n' "$IMAGE" "$DIGEST" >> "$GITHUB_STEP_SUMMARY"
-          if [ "$ENABLED" = true ]; then
-            echo 'Digest committed to envs. ArgoCD sync and health must be checked separately.' >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo 'GitOps handoff disabled. No cluster deployment requested.' >> "$GITHUB_STEP_SUMMARY"
+          if [ "$ENABLED" != true ]; then
+            echo 'Deployment dispatch disabled. No cluster deployment requested.' >> "$GITHUB_STEP_SUMMARY"
           fi

@@ -1,11 +1,12 @@
 # nextjs-image
 
-Builds an application-owned Dockerfile, publishes to GHCR and smoke-tests the
-published digest. GitOps writes are disabled unless `GITOPS_ENABLED=true`.
+Builds the application Dockerfile, publishes to GHCR and smoke-tests its digest.
+With GITOPS_ENABLED=true it dispatches envs/websites.yml and waits for the result.
+The sender no longer checks out envs or commits manifests.
 
-Required inputs: `environment`, `source-ref`, `dockerfile`, `image`, `image-tag`,
-`gitops-path`. Optional: `image-alias`, `next-cache-target`, `health-path`, `platforms`.
-Returns the published `digest`. Requires contents read and packages write.
-`GITOPS_TOKEN` is required only when GitOps is enabled.
+Required inputs: environment, source-ref, dockerfile, image, image-tag.
+Optional: application, next-cache-target, health-path, platforms. Legacy gitops-path
+and image-alias remain accepted but are ignored. Returns the published digest.
+Requires Contents read and Packages write; GITOPS_TOKEN needs envs Actions read/write.
 
-See [configuration and examples](../nextjs.md).
+See [configuration and event contract](../nextjs.md).
