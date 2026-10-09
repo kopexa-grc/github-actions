@@ -13,10 +13,10 @@ Internal callers require an internal or public workflow repository.
   newly created release -> production. Merged Release Please PRs never deploy to
   staging, including reruns. Nested calls use the same central workflow revision.
 - `nextjs-image.yml`: environment-specific Docker build, GHCR push, health/noindex
-  smoke test, optional digest update in `envs`.
+  smoke test, optional dispatch to `envs/websites.yml`, with result tracking.
 
 Consumers should pin calls to a reviewed commit SHA or immutable workflow tag.
-`hello` pins a published workflow commit. Updating central workflows then becomes an explicit
+`hello` pins a published workflow release. Updating central workflows then becomes an explicit
 consumer PR. Existing callers adopt dependency updates only when they update their pinned reference.
 
 ## GitHub Environments (in each calling repo)
@@ -39,7 +39,7 @@ Variables for both environments:
 Example staging JSON:
 
 ```json
-{"NEXT_PUBLIC_BASE_URL":"https://hello.staging.kopexa.dev"}
+{"NEXT_PUBLIC_BASE_URL":"https://hello.staging.kopexa.com"}
 ```
 
 Production JSON: same key with `https://kopexa.com`, plus required public integration
@@ -47,10 +47,11 @@ configuration copied from the actual current deployment. Do not guess production
 
 Secrets:
 
-- `GITOPS_TOKEN`: fine-grained token or GitHub App token scoped to `kopexa-grc/envs`
-  Contents write. Store as an environment secret (passed secrets may be empty; the
-  called job resolves its environment secret). Direct main pushes require compatible
-  envs branch protections; otherwise change handoff to PRs before enabling it.
+- `GITOPS_TOKEN`: GitHub App installation token or fine-grained token scoped to
+  `kopexa-grc/envs` with Actions read/write. Used only to dispatch and observe
+  `websites.yml`; the sender no longer checks out or writes envs. Store as an
+  environment secret. The receiver separately needs `WEBSITE_SOURCE_TOKEN` with
+  source Contents/Actions read and uses its own GITHUB_TOKEN for envs commits.
 - `RELEASE_PLEASE_TOKEN`: optional repository secret with Contents, Issues and Pull
   requests write. Needed if generated Release Please PRs must trigger required CI
   checks. GITHUB_TOKEN fallback works for release creation and the in-workflow
@@ -80,8 +81,9 @@ GitHub success confirms image and GitOps handoff; it does not confirm Argo Healt
 If production build/handoff fails after release creation, rerun **failed jobs** so
 Release Please outputs from the successful job are retained. Rerunning all jobs
 will find no new release and deliberately does not redeploy a release merge.
-For an intentional redeploy, add a reviewed workflow_dispatch caller to
-`nextjs-image.yml` with the exact existing release tag and target environment.
+For an intentional rollback, change the desired digest in envs through review.
+The receiver accepts only verified main-push delivery runs; arbitrary manual image
+workflow callers are not accepted by its source policy.
 Rollbacks restore a previous digest in envs (with matching runtime configuration).
 
 Staging and production are separate builds of their respective commits, because
@@ -139,3 +141,22 @@ sources and public environment match the compilation. Only after a successful
 check does the script set NEXT_TYPECHECK_COMPLETED for Next to avoid repeating
 the type check while the compiler graph is resident. Normal pnpm build retains
 Next's type check. This is a sequential memory optimization, not removal of validation.
+
+## Deployment event contract
+
+`application` defaults to the caller repository name. The deprecated `staging-path`,
+`production-path`, `gitops-path` and `image-alias` inputs remain accepted for existing
+callers but no longer select manifests. The envs application registry owns paths and
+image repositories. Remove these legacy inputs when updating callers to this release.
+
+The source sends application, environment, image digest, actual checkout SHA,
+source ref/tag and run ID/attempt through `workflow_dispatch` on envs main.
+`envs/.github/workflows/websites.yml` and its validation script must be published
+before enabling GITOPS_ENABLED. It validates smoke-test completion, source identity,
+staging freshness and production release tags before committing.
+
+The sender records the matching receiver run URL and waits up to 15 minutes.
+A successful dispatch alone is not success. Cancellations/timeouts fail the handoff;
+inspect the receiver before retrying because a timed-out receiver can still complete.
+Argo health remains a separate observation. Extra runner startup and queue latency
+are part of the handoff, so build-speed targets are not deployment guarantees.

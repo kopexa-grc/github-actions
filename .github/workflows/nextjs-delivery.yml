@@ -10,11 +10,16 @@ on:
       image:
         required: true
         type: string
+      application:
+        default: ""
+        type: string
       staging-path:
-        required: true
+        description: Deprecated; envs owns target paths
+        default: ""
         type: string
       production-path:
-        required: true
+        description: Deprecated; envs owns target paths
+        default: ""
         type: string
       next-cache-target:
         default: /app/.next/cache
@@ -74,7 +79,7 @@ jobs:
       next-cache-target: ${{ inputs.next-cache-target }}
       image: ${{ inputs.image }}
       image-tag: staging-${{ github.sha }}
-      gitops-path: ${{ inputs.staging-path }}
+      application: ${{ inputs.application }}
     secrets:
       GITOPS_TOKEN: ${{ secrets.GITOPS_TOKEN }}
   production:
@@ -88,6 +93,6 @@ jobs:
       next-cache-target: ${{ inputs.next-cache-target }}
       image: ${{ inputs.image }}
       image-tag: ${{ needs.release.outputs.tag }}
-      gitops-path: ${{ inputs.production-path }}
+      application: ${{ inputs.application }}
     secrets:
       GITOPS_TOKEN: ${{ secrets.GITOPS_TOKEN }}
