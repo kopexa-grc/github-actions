@@ -26,7 +26,7 @@ runs:
   steps:
     - name: Set up Go in working directory
       if: ${{ inputs.working-directory != '' }}
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         go-version: ${{ inputs.go-version }}
         go-version-file: ${{ inputs.working-directory }}/${{ inputs.go-version-file }}
@@ -35,13 +35,13 @@ runs:
 
     - name: Set up Go
       if: ${{ inputs.working-directory == '' }}
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         go-version: ${{ inputs.go-version }}
         go-version-file: ${{ inputs.go-version-file }}
         cache: true
 
-    - run: go install github.com/jstemmer/go-junit-report/v2@latest
+    - run: go install github.com/jstemmer/go-junit-report/v2@v2.1.0
       shell: bash
 
     - run: '${{ github.action_path }}/main.sh'
@@ -50,7 +50,7 @@ runs:
         INPUT_command: ${{ inputs.command }}
         WORKING_DIRECTORY: ${{ inputs.working-directory }}
 
-    - uses: mikepenz/action-junit-report@v4
+    - uses: mikepenz/action-junit-report@6ef3fdcfcd5f0b5d14df3e659ef19b8c6820f93d # v6.6.1
       with:
         report_paths: '**/junit.xml'
         fail_on_failure: true

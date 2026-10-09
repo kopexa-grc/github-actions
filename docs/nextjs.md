@@ -2,8 +2,8 @@
 
 This repository shares workflow implementation; application repositories own their
 Dockerfiles, release versions, tests and deployment targets. `envs` owns manifests.
-The workflows are prepared locally. Publish and validate them before enabling callers. If this repository is private,
-allow reuse by the organization in its Actions access settings.
+The repository is internal and its Actions access policy permits enterprise callers.
+Internal callers require an internal or public workflow repository.
 
 ## Workflows
 
@@ -16,9 +16,8 @@ allow reuse by the organization in its Actions access settings.
   smoke test, optional digest update in `envs`.
 
 Consumers should pin calls to a reviewed commit SHA or immutable workflow tag.
-`hello` temporarily references `main` for bootstrap. Do not enable production until
-that reference has been pinned. Updating central workflows then becomes an explicit
-consumer PR. Existing Go actions and workflows remain unchanged.
+`hello` pins a published workflow commit. Updating central workflows then becomes an explicit
+consumer PR. Existing callers adopt dependency updates only when they update their pinned reference.
 
 ## GitHub Environments (in each calling repo)
 

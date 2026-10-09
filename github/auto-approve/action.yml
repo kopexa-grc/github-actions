@@ -26,20 +26,17 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Setup GitHub token ENV vars
-      shell: bash
-      run: |
-        echo "GITHUB_TOKEN=${{ inputs.github-token }}" >> "${GITHUB_ENV}"
-        echo "GH_TOKEN=${{ inputs.github-token }}" >> "${GITHUB_ENV}"
     - name: Qualify for auto-approval
-      uses: actions/github-script@v7
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
       id: qualify
+      env:
+        QUALIFY_USERS: ${{ inputs.users }}
+        QUALIFY_LABELS: ${{ inputs.labels }}
       with:
-        users: ${{ inputs.users }}
-        labels: ${{ inputs.labels }}
+        github-token: ${{ inputs.github-token }}
         script: |
-          const qualifyUsers = core.getMultilineInput("users");
-          const qualifyLabels = core.getMultilineInput("labels");
+          const qualifyUsers = process.env.QUALIFY_USERS.split(/[,\n]/).map(value => value.trim()).filter(Boolean);
+          const qualifyLabels = process.env.QUALIFY_LABELS.split(/[,\n]/).map(value => value.trim()).filter(Boolean);
           const actor = context.actor
           const prLabels = context.payload.pull_request.labels;
 
@@ -79,5 +76,9 @@ runs:
     - name: Auto-approve PR
       if: ${{ steps.qualify.outputs.qualify == 'true' }}
       shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPOSITORY: ${{ github.repository }}
       run: |
-        gh pr review ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --approve
+        gh pr review "$PR_NUMBER" --repo "$REPOSITORY" --approve
