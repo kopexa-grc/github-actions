@@ -8,5 +8,5 @@ updates:
       - "/go/setup"
       - "/go/unit-test"
     schedule:
-      # Check for updates to GitHub Actions every week
-      interval: "weekly"
+      # Check for updates to GitHub Actions every quarter
+      interval: "quarterly"
