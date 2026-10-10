@@ -188,7 +188,7 @@ jobs:
                   if (data.conclusion !== 'success') {
                     throw new Error(`envs deployment ${data.conclusion}: ${data.html_url}`);
                   }
-                  await core.summary.addRaw('\nDesired image recorded in envs. ArgoCD sync and health are separate.\n').write();
+                  await core.summary.addRaw('\nenvs handled the delivery request successfully. Superseded deliveries may be skipped; inspect the linked run summary for the outcome. ArgoCD sync and health are separate.\n').write();
                   return;
                 }
               }
