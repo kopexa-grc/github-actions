@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.5](https://github.com/kopexa-grc/github-actions/compare/v0.0.4...v0.0.5) (2026-10-10)
+
+
+### Bug Fixes
+
+* **nextjs:** report dispatch completion without claiming deployment ([#10](https://github.com/kopexa-grc/github-actions/issues/10)) ([caf8a95](https://github.com/kopexa-grc/github-actions/commit/caf8a95985f2951347b226b5abbf313959f2a3c0))
+
 ## [0.0.4](https://github.com/kopexa-grc/github-actions/compare/v0.0.3...v0.0.4) (2026-10-09)
 
 
