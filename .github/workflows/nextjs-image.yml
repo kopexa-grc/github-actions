@@ -58,11 +58,15 @@ jobs:
       url: ${{ vars.DEPLOYMENT_URL }}
     outputs:
       digest: ${{ steps.build.outputs.digest }}
+      source-sha: ${{ steps.source.outputs.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.source-ref }}
           persist-credentials: false
+      - name: Record checked-out source
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Validate environment
         id: config
         env:
@@ -142,19 +146,40 @@ jobs:
             curl -sS --max-time 10 -D "$RUNNER_TEMP/website-headers" -o /dev/null http://127.0.0.1:3000/
             grep -qi '^x-robots-tag:.*noindex' "$RUNNER_TEMP/website-headers"
           fi
+      - name: Record published image
+        env:
+          IMAGE: ${{ inputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          ENABLED: ${{ vars.GITOPS_ENABLED }}
+        run: |
+          # shellcheck disable=SC2016
+          printf 'Published `%s@%s`\n\n' "$IMAGE" "$DIGEST" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$ENABLED" != true ]; then
+            echo 'Deployment dispatch disabled. No cluster deployment requested.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+  deploy:
+    needs: image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: ${{ inputs.environment }}
+      url: ${{ vars.DEPLOYMENT_URL }}
+    permissions:
+      contents: read
+    steps:
       - name: Dispatch website deployment and await result
         if: vars.GITOPS_ENABLED == 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           APPLICATION: ${{ inputs.application || github.event.repository.name }}
           DEPLOY_ENV: ${{ inputs.environment }}
-          DIGEST: ${{ steps.build.outputs.digest }}
+          DIGEST: ${{ needs.image.outputs.digest }}
           SOURCE_REF: ${{ inputs.source-ref }}
+          SOURCE_SHA: ${{ needs.image.outputs.source-sha }}
         with:
           github-token: ${{ secrets.GITOPS_TOKEN }}
           script: |
-            const { execFileSync } = require('node:child_process');
-            const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], {encoding: 'utf8'}).trim();
+            const sourceSha = process.env.SOURCE_SHA;
             const target = {owner: 'kopexa-grc', repo: 'envs'};
             const attempt = process.env.GITHUB_RUN_ATTEMPT;
             const runId = String(context.runId);
@@ -195,14 +220,3 @@ jobs:
               await new Promise(resolve => setTimeout(resolve, 10000));
             }
             throw new Error('Timed out waiting for envs; inspect the deployment run before retrying.');
-      - name: Record published image
-        env:
-          IMAGE: ${{ inputs.image }}
-          DIGEST: ${{ steps.build.outputs.digest }}
-          ENABLED: ${{ vars.GITOPS_ENABLED }}
-        run: |
-          # shellcheck disable=SC2016
-          printf 'Published `%s@%s`\n\n' "$IMAGE" "$DIGEST" >> "$GITHUB_STEP_SUMMARY"
-          if [ "$ENABLED" != true ]; then
-            echo 'Deployment dispatch disabled. No cluster deployment requested.' >> "$GITHUB_STEP_SUMMARY"
-          fi
