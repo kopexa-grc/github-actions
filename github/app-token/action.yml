@@ -1,0 +1,86 @@
+# Copyright (c) Kopexa GmbH
+# SPDX-License-Identifier: BUSL-1.1
+
+---
+name: Kopexa Operator app token
+description:
+  Mint a short-lived installation token of the Kopexa Operator GitHub App instead of
+  using a personal access token
+author: Kopexa
+inputs:
+  client-id:
+    description: Kopexa Operator client ID, usually vars.KOPEXA_OPERATOR_CLIENT_ID
+    required: true
+  private-key:
+    description: Kopexa Operator private key, usually secrets.KOPEXA_OPERATOR_PRIVATE_KEY
+    required: true
+  owner:
+    description: Owner of the target repositories
+    default: ${{ github.repository_owner }}
+    required: false
+  repositories:
+    description: |
+      Comma or newline separated repository names the token may access.
+      Defaults to the calling repository only.
+    default: ${{ github.event.repository.name }}
+    required: false
+  permission-contents:
+    description: Contents permission (read, write or empty to omit)
+    default: ''
+    required: false
+  permission-pull-requests:
+    description: Pull requests permission (read, write or empty to omit)
+    default: ''
+    required: false
+  permission-issues:
+    description: Issues permission (read, write or empty to omit)
+    default: ''
+    required: false
+  permission-actions:
+    description: Actions permission (read, write or empty to omit)
+    default: ''
+    required: false
+outputs:
+  token:
+    description: Installation token, valid for one hour and revoked after the job
+    value: ${{ steps.token.outputs.token }}
+  app-slug:
+    description: App slug, for example kopexaoperator
+    value: ${{ steps.token.outputs.app-slug }}
+  git-user-name:
+    description: Commit author name of the bot, for example kopexaoperator[bot]
+    value: ${{ steps.identity.outputs.name }}
+  git-user-email:
+    description: Commit author email of the bot (noreply address)
+    value: ${{ steps.identity.outputs.email }}
+
+runs:
+  using: composite
+  steps:
+    - name: Mint installation token
+      id: token
+      uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+      with:
+        client-id: ${{ inputs.client-id }}
+        private-key: ${{ inputs.private-key }}
+        owner: ${{ inputs.owner }}
+        repositories: ${{ inputs.repositories }}
+        permission-contents: ${{ inputs.permission-contents }}
+        permission-pull-requests: ${{ inputs.permission-pull-requests }}
+        permission-issues: ${{ inputs.permission-issues }}
+        permission-actions: ${{ inputs.permission-actions }}
+
+    - name: Resolve bot git identity
+      id: identity
+      shell: bash
+      env:
+        GH_TOKEN: ${{ steps.token.outputs.token }}
+        APP_SLUG: ${{ steps.token.outputs.app-slug }}
+      run: |
+        set -euo pipefail
+        name="${APP_SLUG}[bot]"
+        id="$(gh api "/users/${name}" --jq .id)"
+        {
+          echo "name=${name}"
+          echo "email=${id}+${name}@users.noreply.github.com"
+        } >> "$GITHUB_OUTPUT"

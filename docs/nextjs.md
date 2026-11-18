@@ -47,12 +47,19 @@ configuration copied from the actual current deployment. Do not guess production
 
 Secrets:
 
-- `GITOPS_TOKEN`: GitHub App installation token or fine-grained token scoped to
+- `KOPEXA_OPERATOR_PRIVATE_KEY` (organization secret) plus `KOPEXA_OPERATOR_CLIENT_ID`
+  (organization variable): preferred. Both workflows mint short-lived tokens of
+  the Kopexa Operator GitHub App, one for Release Please (Contents, Issues, Pull
+  requests write on the calling repo, so release PRs trigger required checks)
+  and one for the envs dispatch (Actions write on `kopexa-grc/envs`). Pass the
+  secret explicitly or with `secrets: inherit`. When it is set, the two tokens
+  below are ignored. See [Kopexa Operator app token](../github/app-token/README.md).
+- `GITOPS_TOKEN` (deprecated, fallback): GitHub App installation token or fine-grained token scoped to
   `kopexa-grc/envs` with Actions read/write. Used only to dispatch and observe
   `websites.yml`; the sender no longer checks out or writes envs. Store as an
   environment secret. The receiver separately needs `WEBSITE_SOURCE_TOKEN` with
   source Contents/Actions read and uses its own GITHUB_TOKEN for envs commits.
-- `RELEASE_PLEASE_TOKEN`: optional repository secret with Contents, Issues and Pull
+- `RELEASE_PLEASE_TOKEN` (deprecated, fallback): optional repository secret with Contents, Issues and Pull
   requests write. Needed if generated Release Please PRs must trigger required CI
   checks. GITHUB_TOKEN fallback works for release creation and the in-workflow
   production job, but its generated PRs/releases do not trigger other workflows.
