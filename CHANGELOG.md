@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.0.6](https://github.com/kopexa-grc/github-actions/compare/v0.0.5...v0.0.6) (2026-11-18)
+
+
+### Features
+
+* Kopexa Operator token and shared release-please action ([#14](https://github.com/kopexa-grc/github-actions/issues/14)) ([81c3f35](https://github.com/kopexa-grc/github-actions/commit/81c3f355d3135037cf03d7eef36948479a0a003d))
+
+
+### Bug Fixes
+
+* complete image smoke checks before deployment dispatch ([#12](https://github.com/kopexa-grc/github-actions/issues/12)) ([2a01110](https://github.com/kopexa-grc/github-actions/commit/2a01110fd66e7ae095e7ff8b6f06f42cb833d1af))
+
 ## [0.0.5](https://github.com/kopexa-grc/github-actions/compare/v0.0.4...v0.0.5) (2026-10-10)
 
 
