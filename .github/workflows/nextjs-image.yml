@@ -40,7 +40,11 @@ on:
         default: linux/amd64
         type: string
     secrets:
+      KOPEXA_OPERATOR_PRIVATE_KEY:
+        description: Private key of the Kopexa Operator app; preferred over GITOPS_TOKEN
+        required: false
       GITOPS_TOKEN:
+        description: Deprecated; use KOPEXA_OPERATOR_PRIVATE_KEY
         required: false
     outputs:
       digest:
@@ -166,7 +170,19 @@ jobs:
       url: ${{ vars.DEPLOYMENT_URL }}
     permissions:
       contents: read
+    env:
+      # Only a boolean, so the key itself never lands in the job environment.
+      USE_KOPEXA_OPERATOR: ${{ secrets.KOPEXA_OPERATOR_PRIVATE_KEY != '' && vars.KOPEXA_OPERATOR_CLIENT_ID != '' }}
     steps:
+      - id: operator
+        if: vars.GITOPS_ENABLED == 'true' && env.USE_KOPEXA_OPERATOR == 'true'
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.KOPEXA_OPERATOR_CLIENT_ID }}
+          private-key: ${{ secrets.KOPEXA_OPERATOR_PRIVATE_KEY }}
+          owner: kopexa-grc
+          repositories: envs
+          permission-actions: write
       - name: Dispatch website deployment and await result
         if: vars.GITOPS_ENABLED == 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
@@ -177,7 +193,7 @@ jobs:
           SOURCE_REF: ${{ inputs.source-ref }}
           SOURCE_SHA: ${{ needs.image.outputs.source-sha }}
         with:
-          github-token: ${{ secrets.GITOPS_TOKEN }}
+          github-token: ${{ steps.operator.outputs.token || secrets.GITOPS_TOKEN }}
           script: |
             const sourceSha = process.env.SOURCE_SHA;
             const target = {owner: 'kopexa-grc', repo: 'envs'};

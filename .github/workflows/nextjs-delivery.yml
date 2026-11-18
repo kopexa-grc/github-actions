@@ -31,9 +31,14 @@ on:
         default: .release-please-manifest.json
         type: string
     secrets:
+      KOPEXA_OPERATOR_PRIVATE_KEY:
+        description: Private key of the Kopexa Operator app; preferred over the legacy tokens below
+        required: false
       RELEASE_PLEASE_TOKEN:
+        description: Deprecated; use KOPEXA_OPERATOR_PRIVATE_KEY
         required: false
       GITOPS_TOKEN:
+        description: Deprecated; use KOPEXA_OPERATOR_PRIVATE_KEY
         required: false
 permissions:
   contents: write
@@ -48,11 +53,25 @@ jobs:
       created: ${{ steps.release.outputs.release_created }}
       tag: ${{ steps.release.outputs.tag_name }}
       staging: ${{ steps.gate.outputs.staging }}
+    env:
+      # Only a boolean, so the key itself never lands in the job environment.
+      USE_KOPEXA_OPERATOR: ${{ secrets.KOPEXA_OPERATOR_PRIVATE_KEY != '' && vars.KOPEXA_OPERATOR_CLIENT_ID != '' }}
     steps:
+      # Release PRs opened with GITHUB_TOKEN start no PR workflows, so they would
+      # carry no required checks. A Kopexa Operator token does start them.
+      - id: operator
+        if: env.USE_KOPEXA_OPERATOR == 'true'
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.KOPEXA_OPERATOR_CLIENT_ID }}
+          private-key: ${{ secrets.KOPEXA_OPERATOR_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
       - id: release
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          token: ${{ steps.operator.outputs.token || secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
           config-file: ${{ inputs.release-config }}
           manifest-file: ${{ inputs.release-manifest }}
       - name: Exclude merged release PRs from staging (including reruns)
@@ -81,6 +100,7 @@ jobs:
       image-tag: staging-${{ github.sha }}
       application: ${{ inputs.application }}
     secrets:
+      KOPEXA_OPERATOR_PRIVATE_KEY: ${{ secrets.KOPEXA_OPERATOR_PRIVATE_KEY }}
       GITOPS_TOKEN: ${{ secrets.GITOPS_TOKEN }}
   production:
     needs: release
@@ -95,4 +115,5 @@ jobs:
       image-tag: ${{ needs.release.outputs.tag }}
       application: ${{ inputs.application }}
     secrets:
+      KOPEXA_OPERATOR_PRIVATE_KEY: ${{ secrets.KOPEXA_OPERATOR_PRIVATE_KEY }}
       GITOPS_TOKEN: ${{ secrets.GITOPS_TOKEN }}
