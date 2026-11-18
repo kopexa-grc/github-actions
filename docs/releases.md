@@ -12,10 +12,10 @@ use full `vX.Y.Z` tags without a component prefix. No moving major tag is create
 5. Update consumers explicitly to the release SHA, optionally with the version as
    a comment, or to its full version tag. Existing SHA-pinned consumers do not move.
 
-The workflow uses `GITHUB_TOKEN`; no new credential is needed. Because bot-created
-PRs do not trigger PR workflows, it explicitly dispatches Workflow validation on
-the release branch. That provides the required `actionlint` check without bypassing
-branch protection. Release PRs are not automatically approved or merged.
+The workflow runs this repository's own `github/release-please` action with a
+Kopexa Operator token (`KOPEXA_OPERATOR_CLIENT_ID`, `KOPEXA_OPERATOR_PRIVATE_KEY`).
+Release PRs opened with it trigger the required `actionlint` check like any other
+PR. Release PRs are not automatically approved or merged.
 
 The dependency upgrade uses Node.js 24 actions. Self-hosted runners must support
 that runtime (at least v2.327.1; authenticated Git inside Docker with checkout v7

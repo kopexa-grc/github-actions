@@ -4,10 +4,7 @@ on:
     branches: [main]
   workflow_dispatch:
 permissions:
-  contents: write
-  pull-requests: write
-  issues: write
-  actions: write
+  contents: read
 concurrency:
   group: release-please
   cancel-in-progress: false
@@ -17,27 +14,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # Checkout only to run this repository's own action from ./github.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The Kopexa Operator token opens the release PR, so its pull_request
+      # workflows (actionlint) start on their own. No dispatch workaround needed.
       - id: release
-        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        uses: ./github/release-please
         with:
-          config-file: .release-please-config.json
-          manifest-file: .release-please-manifest.json
-      # GITHUB_TOKEN-created PRs do not trigger pull_request workflows.
-      # Explicit dispatch runs the same required validation on the release head.
-      - name: Validate the release PR
-        if: steps.release.outputs.prs_created == 'true'
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        env:
-          RELEASE_PRS: ${{ steps.release.outputs.prs }}
-        with:
-          script: |
-            for (const pr of JSON.parse(process.env.RELEASE_PRS || '[]')) {
-              const { data } = await github.rest.pulls.get({ ...context.repo, pull_number: pr.number });
-              if (data.head.repo.full_name !== `${context.repo.owner}/${context.repo.repo}` ||
-                  !data.head.ref.startsWith('release-please--')) {
-                throw new Error('Unexpected release PR source');
-              }
-              await github.rest.actions.createWorkflowDispatch({
-                ...context.repo, workflow_id: 'workflow-lint.yml', ref: data.head.ref
-              });
-            }
+          client-id: ${{ vars.KOPEXA_OPERATOR_CLIENT_ID }}
+          private-key: ${{ secrets.KOPEXA_OPERATOR_PRIVATE_KEY }}

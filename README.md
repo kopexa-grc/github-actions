@@ -12,6 +12,7 @@ Call them with `steps[].uses`; your workflow owns the runner and job permissions
 - [Go unit tests](go/unit-test/README.md)
 - [PR auto-approval](github/auto-approve/README.md)
 - [Kopexa Operator app token](github/app-token/README.md): short-lived bot token instead of personal access tokens
+- [Release Please](github/release-please/README.md): Release Please with a Kopexa Operator token, drop-in for the upstream step
 
 ## Reusable workflows: complete jobs
 
